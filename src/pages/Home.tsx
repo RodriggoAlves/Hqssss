@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { Comic } from '../types';
 import { storage } from '../services/StorageService';
 import { ComicCard } from '../components/ComicCard';
-import { Plus, Search } from 'lucide-react';
+import { Plus, Search, Download } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { ComicParser } from '../services/ComicParser';
 
@@ -14,7 +14,27 @@ export const Home: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const navigate = useNavigate();
 
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
   useEffect(() => { loadComics(); }, []);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+    }
+  };
 
   const loadComics = async () => {
     try {
@@ -82,8 +102,22 @@ export const Home: React.FC = () => {
     <div className="min-h-screen pb-12">
       {/* Navbar */}
       <header className="flex flex-col md:flex-row items-center justify-between px-4 md:px-8 py-4 bg-gradient-to-b from-black/80 to-transparent sticky top-0 z-50 gap-4 md:gap-0">
-        <h1 className="text-2xl md:text-3xl font-bold text-[#e50914] tracking-wider w-full md:w-auto text-center md:text-left">COMIC FLIX</h1>
+        <div className="flex items-center gap-3 w-full md:w-auto justify-center md:justify-start">
+          <img src="/pwa-192x192.png" alt="Comic Flix Logo" className="w-10 h-10 rounded-xl shadow-lg" />
+          <h1 className="text-2xl md:text-3xl font-bold text-[#e50914] tracking-wider">COMIC FLIX</h1>
+        </div>
+        
         <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
+          {deferredPrompt && (
+            <button 
+              onClick={handleInstallClick}
+              className="bg-white/10 hover:bg-white/20 transition px-4 py-2 rounded flex items-center justify-center gap-2 w-full md:w-auto font-medium text-sm md:text-base border border-gray-600"
+            >
+              <Download size={20} />
+              INSTALAR APP
+            </button>
+          )}
+
           <div className="relative w-full md:w-auto">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
             <input
