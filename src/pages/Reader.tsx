@@ -95,16 +95,36 @@ export const Reader: React.FC = () => {
     go(page - step);
   }, [go, page, displayMode]);
 
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const outerContainerRef = useRef<HTMLDivElement>(null);
+
   // Keyboard navigation
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      // Bloqueia rolagem APENAS para os atalhos de navegação
+      if (['ArrowRight', 'ArrowLeft', ' '].includes(e.key) && e.target === document.body) {
+        e.preventDefault(); 
+      }
+      
       if (e.key === 'ArrowRight' || e.key === ' ') next();
       else if (e.key === 'ArrowLeft') prev();
       else if (e.key === 'Escape') navigate('/');
+      
+      // Para ArrowUp e ArrowDown, tentamos rolar TUDO que for possível para garantir
+      else if (e.key === 'ArrowUp') {
+        window.scrollBy({ top: -150, behavior: 'smooth' });
+        outerContainerRef.current?.scrollBy({ top: -150, behavior: 'smooth' });
+        scrollContainerRef.current?.scrollBy({ top: -150, behavior: 'smooth' });
+      }
+      else if (e.key === 'ArrowDown') {
+        window.scrollBy({ top: 150, behavior: 'smooth' });
+        outerContainerRef.current?.scrollBy({ top: 150, behavior: 'smooth' });
+        scrollContainerRef.current?.scrollBy({ top: 150, behavior: 'smooth' });
+      }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [next, prev, navigate]);
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [next, prev, navigate, displayMode]);
 
   // Auto-hide UI
   useEffect(() => {
@@ -124,7 +144,7 @@ export const Reader: React.FC = () => {
   }
 
   return (
-    <div className={`h-screen bg-black flex flex-col select-none ${displayMode === 'webtoon' ? 'overflow-y-auto' : 'overflow-hidden'}`}>
+    <div ref={outerContainerRef} className={`h-screen bg-black flex flex-col select-none ${zoom > 100 || displayMode === 'webtoon' ? 'overflow-auto' : 'overflow-hidden'}`}>
       {/* Top bar */}
       <div className={`fixed top-0 left-0 right-0 z-50 p-2 md:p-3 flex justify-between items-center bg-black/80 transition-opacity duration-300 ${showUI ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
         <button onClick={() => navigate(-1)} className="text-white flex items-center gap-1 md:gap-2 hover:text-red-500 py-2 px-2 md:px-4 rounded">
@@ -152,14 +172,14 @@ export const Reader: React.FC = () => {
 
       {/* Image area */}
       <div 
-        className={`flex-1 ${displayMode === 'webtoon' ? 'w-full pt-16 pb-20' : 'flex items-center justify-center'}`}
+        ref={scrollContainerRef}
+        className={`flex-1 ${displayMode === 'webtoon' ? 'w-full pt-16 pb-20' : `flex justify-center ${zoom > 100 ? 'items-start' : 'items-center'}`}`}
         style={{
           overflow: zoom > 100 ? 'auto' : 'hidden' // Allow scrolling when zoomed in
         }}
       >
         <div 
-          className={`transition-transform duration-300 ease-out flex ${displayMode === 'webtoon' ? 'flex-col items-center gap-4 w-full' : 'items-center justify-center h-full'}`}
-          style={{ transform: `scale(${zoom / 100})`, transformOrigin: displayMode === 'webtoon' ? 'top center' : 'center center' }}
+          className={`flex ${displayMode === 'webtoon' ? 'flex-col items-center gap-4 w-full' : 'gap-2'}`}
         >
           {pageUrls.map((url, i) => (
             <img
@@ -167,7 +187,12 @@ export const Reader: React.FC = () => {
               src={url}
               alt={`Página ${page + i}`}
               draggable={false}
-              className={`max-w-full ${displayMode === 'webtoon' ? 'w-full md:w-2/3 lg:w-1/2 object-contain' : 'max-h-screen object-contain'}`}
+              style={{
+                width: displayMode === 'webtoon' ? `${Math.min(100, zoom)}%` : 'auto',
+                height: displayMode !== 'webtoon' ? `${zoom}vh` : 'auto',
+                objectFit: 'contain'
+              }}
+              className="max-w-none max-h-none"
             />
           ))}
         </div>

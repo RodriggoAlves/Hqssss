@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import type { Comic } from '../types';
 import { storage } from '../services/StorageService';
-import { ArrowLeft, Play, Trash2, Info } from 'lucide-react';
+import { ArrowLeft, Play, Trash2, Info, Edit3, Check } from 'lucide-react';
 
 export const Details: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -11,14 +11,17 @@ export const Details: React.FC = () => {
   const [comic, setComic] = useState<Comic | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [isEditingTopic, setIsEditingTopic] = useState(false);
+  const [editTopicValue, setEditTopicValue] = useState('');
 
   useEffect(() => {
     const loadData = async () => {
       if (!id) return;
       try {
-        const local = await storage.getComic(id);
-        if (local) {
-          setComic(local);
+        const c = await storage.getComic(id);
+        if (c) {
+          setComic(c);
+          setEditTopicValue(c.series || 'Geral');
         } else {
           navigate('/');
         }
@@ -32,7 +35,7 @@ export const Details: React.FC = () => {
   }, [id, navigate]);
 
   const handleDelete = async () => {
-    if (!comic || !window.confirm('Tem certeza que deseja excluir este quadrinho da biblioteca local?')) return;
+    if (!comic || !window.confirm('Tem certeza que deseja excluir este quadrinho da biblioteca?')) return;
     
     setDeleting(true);
     try {
@@ -45,8 +48,20 @@ export const Details: React.FC = () => {
     }
   };
 
+  const handleSaveTopic = async () => {
+    if (!comic) return;
+    try {
+      const updatedComic = { ...comic, series: editTopicValue.trim() || 'Geral' };
+      await storage.saveComic(updatedComic);
+      setComic(updatedComic);
+      setIsEditingTopic(false);
+    } catch(e) {
+      alert('Erro ao salvar tópico');
+    }
+  };
+
   if (loading || !comic) {
-    return <div className="min-h-screen pt-20 px-4 md:px-8 text-center text-lg md:text-xl">Carregando detalhes...</div>;
+    return <div className="min-h-screen pt-20 px-8 text-center text-xl text-white">Carregando detalhes...</div>;
   }
 
   const formatSize = (bytes: number) => {
@@ -54,82 +69,113 @@ export const Details: React.FC = () => {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
-  const progressPercent = comic.totalPages > 1 ? Math.round((comic.currentPage / (comic.totalPages - 1)) * 100) : 0;
+  const progressPercent = comic.totalPages ? Math.round((comic.currentPage / (comic.totalPages - 1)) * 100) : 0;
 
   return (
-    <div className="min-h-screen relative overflow-x-hidden">
+    <div className="min-h-screen relative text-white">
       {/* Background with blur */}
       <div 
         className="absolute inset-0 bg-cover bg-center opacity-20"
-        style={{ backgroundImage: `url(${comic.coverImage})`, filter: 'blur(30px)' }}
+        style={{ backgroundImage: `url(${comic.coverImage})`, filter: 'blur(40px)' }}
       />
-      <div className="absolute inset-0 bg-gradient-to-t from-[#141414] via-[#141414]/80 to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-t from-[#141414] via-[#141414]/90 to-[#141414]/60" />
 
-      <div className="relative z-10 pt-10 md:pt-20 px-4 md:px-8 max-w-6xl mx-auto pb-20">
+      <div className="relative z-10 pt-20 px-6 md:px-12 max-w-6xl mx-auto">
         <button 
-          onClick={() => navigate('/')}
-          className="flex items-center gap-2 text-gray-300 hover:text-white transition mb-6 md:mb-8"
+          onClick={() => navigate(-1)}
+          className="flex items-center gap-2 text-gray-300 hover:text-white transition mb-8"
         >
           <ArrowLeft size={24} />
-          <span className="font-semibold text-base md:text-lg">Voltar</span>
+          <span className="font-semibold text-lg">Voltar</span>
         </button>
 
-        <div className="flex flex-col md:flex-row gap-6 md:gap-10 items-center md:items-start">
+        <div className="flex flex-col md:flex-row gap-10">
           {/* Cover */}
-          <div className="w-2/3 md:w-1/3 max-w-sm flex-shrink-0">
+          <div className="w-full md:w-1/3 max-w-sm flex-shrink-0 mx-auto md:mx-0">
             <img 
               src={comic.coverImage} 
               alt={comic.title}
-              className="w-full rounded-lg shadow-2xl shadow-black/50"
+              className="w-full rounded-lg shadow-2xl shadow-black/80"
             />
           </div>
 
           {/* Info */}
-          <div className="flex-1 pt-2 md:pt-4 w-full">
-            <h1 className="text-3xl md:text-6xl font-bold mb-3 md:mb-4 leading-tight text-center md:text-left">{comic.title}</h1>
+          <div className="flex-1 pt-4">
+            <h1 className="text-3xl md:text-5xl font-bold mb-4 leading-tight">{comic.title}</h1>
             
-            <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 md:gap-4 text-gray-400 text-xs md:text-base font-medium mb-6 md:mb-8">
-              <span className="bg-white/10 px-2 py-1 rounded">{comic.format.toUpperCase()}</span>
+            <div className="flex flex-wrap items-center gap-4 text-gray-400 text-sm md:text-base font-medium mb-6">
+              <span className="bg-white/10 px-2 py-1 rounded uppercase">{comic.format}</span>
               <span>•</span>
               <span>{comic.totalPages} páginas</span>
               <span>•</span>
               <span>{formatSize(comic.fileSize)}</span>
             </div>
 
+            {/* Topic/Series Editor */}
+            <div className="mb-8 p-4 bg-white/5 rounded-lg border border-white/10 flex flex-col md:flex-row md:items-center gap-4 max-w-md">
+              <div className="flex-1">
+                <span className="text-gray-400 text-xs uppercase tracking-wider block mb-1">Tópico / Coleção</span>
+                {isEditingTopic ? (
+                  <input 
+                    type="text" 
+                    value={editTopicValue} 
+                    onChange={e => setEditTopicValue(e.target.value)}
+                    className="w-full bg-[#141414] border border-gray-600 rounded px-3 py-1.5 text-white focus:border-red-500 outline-none"
+                    placeholder="Nome do Tópico..."
+                    autoFocus
+                    onKeyDown={e => e.key === 'Enter' && handleSaveTopic()}
+                  />
+                ) : (
+                  <span className="text-xl font-semibold">{comic.series || 'Geral'}</span>
+                )}
+              </div>
+              <div>
+                {isEditingTopic ? (
+                  <button onClick={handleSaveTopic} className="bg-green-600 hover:bg-green-500 px-4 py-2 rounded text-sm font-bold flex items-center gap-2 transition w-full md:w-auto justify-center">
+                    <Check size={16} /> Salvar
+                  </button>
+                ) : (
+                  <button onClick={() => setIsEditingTopic(true)} className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded text-sm font-bold flex items-center gap-2 transition w-full md:w-auto justify-center">
+                    <Edit3 size={16} /> Editar
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* Read Button */}
-            <div className="flex flex-col md:flex-row gap-3 md:gap-4 mb-8 md:mb-10 w-full md:w-auto">
+            <div className="flex flex-wrap gap-4 mb-10">
               <button 
                 onClick={() => navigate(`/read/${comic.id}`)}
-                className="flex items-center justify-center gap-2 bg-white text-black px-6 md:px-8 py-3 rounded text-lg md:text-xl font-bold hover:bg-gray-200 transition w-full md:w-auto"
+                className="flex items-center gap-2 bg-white text-black px-8 py-3 rounded text-lg md:text-xl font-bold hover:bg-gray-200 transition"
               >
-                <Play size={24} fill="currentColor" />
+                <Play size={28} fill="currentColor" />
                 {progressPercent > 0 && progressPercent < 100 ? 'CONTINUAR LENDO' : 'LER AGORA'}
               </button>
               
               <button 
                 onClick={handleDelete}
                 disabled={deleting}
-                className="flex items-center justify-center gap-2 bg-red-600/80 text-white px-6 py-3 rounded text-base md:text-lg font-semibold hover:bg-red-600 transition w-full md:w-auto md:ml-auto"
+                className="flex items-center gap-2 bg-red-600/80 text-white px-6 py-3 rounded text-base md:text-lg font-semibold hover:bg-red-600 transition"
               >
-                <Trash2 size={20} />
+                <Trash2 size={24} />
                 {deleting ? 'EXCLUINDO...' : 'EXCLUIR'}
               </button>
             </div>
 
             {/* Progress */}
             {progressPercent > 0 && (
-              <div className="bg-[#2f2f2f] rounded-lg p-4 md:p-6 max-w-md mx-auto md:mx-0 w-full">
+              <div className="bg-[#2f2f2f] rounded-lg p-6 max-w-md">
                 <div className="flex justify-between items-end mb-2">
-                  <span className="text-gray-300 font-medium text-sm md:text-base">Progresso</span>
-                  <span className="text-lg md:text-xl font-bold">{progressPercent}%</span>
+                  <span className="text-gray-300 font-medium">Progresso</span>
+                  <span className="text-xl font-bold">{progressPercent}%</span>
                 </div>
                 <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
                   <div 
-                    className="h-full bg-netflix-red transition-all duration-500"
-                    style={{ width: `${progressPercent}%`, backgroundColor: '#e50914' }}
+                    className="h-full bg-[#e50914] transition-all duration-500"
+                    style={{ width: `${progressPercent}%` }}
                   />
                 </div>
-                <p className="text-gray-400 text-xs md:text-sm mt-3 flex items-center justify-center md:justify-start gap-2">
+                <p className="text-gray-400 text-sm mt-3 flex items-center gap-2">
                   <Info size={16} />
                   Página {comic.currentPage + 1} de {comic.totalPages}
                 </p>
@@ -137,9 +183,9 @@ export const Details: React.FC = () => {
             )}
             
             {/* File Info */}
-            <div className="mt-8 pt-6 md:pt-8 border-t border-gray-800 text-center md:text-left">
-              <h3 className="text-gray-400 text-xs md:text-sm font-semibold uppercase tracking-wider mb-2">Informações do Arquivo Local</h3>
-              <p className="text-gray-500 text-xs md:text-sm truncate px-4 md:px-0">{comic.fileName}</p>
+            <div className="mt-8 pt-8 border-t border-gray-800">
+              <h3 className="text-gray-400 text-sm font-semibold uppercase tracking-wider mb-2">Arquivo Original</h3>
+              <p className="text-gray-500 text-sm font-mono break-all">{comic.fileName}</p>
             </div>
           </div>
         </div>
