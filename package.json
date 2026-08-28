@@ -7,8 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview",
-    "start": "node server.mjs"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@bitplane/rars": "^0.9.3",
