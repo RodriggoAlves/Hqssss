@@ -181,61 +181,62 @@ export const Home: React.FC = () => {
 
   return (
     <div className="min-h-screen pb-12">
-      <header className="flex flex-col lg:flex-row items-center justify-between px-4 md:px-8 py-4 bg-gradient-to-b from-black/80 to-transparent sticky top-0 z-50 gap-4">
-        <div className="flex items-center gap-3 w-full lg:w-auto justify-center lg:justify-start">
-          <img src="/pwa-192x192.png" alt="Comic Flix Logo" className="w-10 h-10 rounded-xl shadow-lg" />
-          <h1 className="text-2xl md:text-3xl font-bold text-[#e50914] tracking-wider">COMIC FLIX</h1>
+      <header className="flex flex-col lg:flex-row items-center justify-between px-4 md:px-8 py-3 bg-gradient-to-b from-black/90 to-transparent sticky top-0 z-50 gap-3">
+        <div className="flex items-center gap-2 w-full lg:w-auto justify-center lg:justify-start">
+          <img src="/pwa-192x192.png" alt="Comic Flix Logo" className="w-8 h-8 rounded-lg shadow-lg" />
+          <h1 className="text-xl font-bold text-[#e50914] tracking-wider">COMIC FLIX</h1>
         </div>
         
-        <div className="flex flex-col md:flex-row items-center gap-4 w-full lg:w-auto">
+        <div className="flex flex-row flex-wrap items-center gap-2 w-full lg:w-auto justify-end">
           {deferredPrompt && (
             <button 
               onClick={handleInstallClick}
-              className="bg-white/10 hover:bg-white/20 transition px-4 py-2 rounded flex items-center justify-center gap-2 w-full md:w-auto font-medium text-sm md:text-base border border-gray-600"
+              className="bg-white/10 hover:bg-white/20 transition px-3 py-1.5 rounded flex items-center gap-1.5 font-medium text-xs border border-gray-600"
             >
-              <Download size={20} />
-              INSTALAR APP
+              <Download size={14} />
+              Instalar
             </button>
           )}
 
-          <div className="flex flex-col sm:flex-row w-full md:w-auto gap-2">
-            <div className="relative flex-1 md:w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+          <div className="flex flex-row gap-2 flex-1 md:flex-none">
+            <div className="relative flex-1 md:w-52">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
               <input
                 type="text"
-                placeholder="Pesquisar HQs ou Tópicos..."
+                placeholder="Pesquisar..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="bg-[#141414] border border-gray-700 text-white rounded-lg py-2 pl-10 pr-4 focus:outline-none focus:border-gray-500 transition w-full"
+                className="bg-[#141414] border border-gray-700 text-white rounded-lg py-1.5 pl-8 pr-3 text-sm focus:outline-none focus:border-gray-500 transition w-full"
               />
             </div>
             
             <select
               value={sortOrder}
               onChange={(e) => setSortOrder(e.target.value as any)}
-              className="bg-[#141414] border border-gray-700 text-white rounded-lg py-2 px-3 focus:outline-none focus:border-gray-500 w-full sm:w-auto"
+              className="bg-[#141414] border border-gray-700 text-white rounded-lg py-1.5 px-2 text-xs focus:outline-none focus:border-gray-500 w-auto"
             >
-              <option value="recent">Mais Recentes</option>
+              <option value="recent">Recentes</option>
               <option value="az">A - Z</option>
               <option value="za">Z - A</option>
             </select>
           </div>
           
-          <div className="flex gap-2 w-full md:w-auto">
-            <label className={`flex-1 cursor-pointer ${isImporting ? 'opacity-50' : 'bg-[#2f2f2f] hover:bg-gray-700'} text-white transition px-4 py-2 rounded font-bold flex items-center justify-center gap-2`}>
-              <Plus size={20} />
-              <span className="text-sm md:text-base">ARQUIVOS</span>
+          <div className="flex gap-2">
+            <label className={`cursor-pointer ${isImporting ? 'opacity-50' : 'bg-[#2f2f2f] hover:bg-gray-700'} text-white transition px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1.5`}>
+              <Plus size={14} />
+              Arquivos
               <input type="file" accept=".cbz,.zip,.cbr,.rar" multiple className="hidden" onChange={(e) => handleImport(e, false)} disabled={isImporting} />
             </label>
 
-            <label className={`flex-1 cursor-pointer ${isImporting ? 'opacity-50' : 'bg-[#e50914] hover:bg-red-700'} text-white transition px-4 py-2 rounded font-bold flex items-center justify-center gap-2`}>
-              <FolderPlus size={20} />
-              <span className="text-sm md:text-base">PASTA</span>
-              {/* @ts-ignore - webkitdirectory is non-standard but works */}
+            <label className={`cursor-pointer ${isImporting ? 'opacity-50' : 'bg-[#e50914] hover:bg-red-700'} text-white transition px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1.5`}>
+              <FolderPlus size={14} />
+              Pasta
+              {/* @ts-ignore */}
               <input type="file" webkitdirectory="" directory="" multiple className="hidden" onChange={(e) => handleImport(e, true)} disabled={isImporting} />
             </label>
-            <button onClick={handleClearLibrary} className="flex-1 bg-red-900/50 hover:bg-red-800 text-white transition px-4 py-2 rounded font-bold flex items-center justify-center gap-2" title="Limpar Biblioteca">
-              Limpar Tudo
+
+            <button onClick={handleClearLibrary} className="bg-red-900/40 hover:bg-red-900/70 text-white transition px-3 py-1.5 rounded text-xs font-bold" title="Limpar Biblioteca">
+              Limpar
             </button>
           </div>
         </div>
