@@ -11,6 +11,7 @@ export const Home: React.FC = () => {
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortOrder, setSortOrder] = useState<'recent' | 'az' | 'za'>('recent');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const navigate = useNavigate();
 
@@ -96,18 +97,27 @@ export const Home: React.FC = () => {
     await loadComics();
   };
 
-  const filteredComics = comics.filter(c => c.title.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredComics = comics
+    .filter(c => c.title.toLowerCase().includes(searchQuery.toLowerCase()))
+    .sort((a, b) => {
+      if (sortOrder === 'recent') {
+        return (b.lastRead || 0) - (a.lastRead || 0);
+      } else if (sortOrder === 'az') {
+        return a.title.localeCompare(b.title);
+      } else {
+        return b.title.localeCompare(a.title);
+      }
+    });
 
   return (
     <div className="min-h-screen pb-12">
-      {/* Navbar */}
-      <header className="flex flex-col md:flex-row items-center justify-between px-4 md:px-8 py-4 bg-gradient-to-b from-black/80 to-transparent sticky top-0 z-50 gap-4 md:gap-0">
-        <div className="flex items-center gap-3 w-full md:w-auto justify-center md:justify-start">
+      <header className="flex flex-col lg:flex-row items-center justify-between px-4 md:px-8 py-4 bg-gradient-to-b from-black/80 to-transparent sticky top-0 z-50 gap-4">
+        <div className="flex items-center gap-3 w-full lg:w-auto justify-center lg:justify-start">
           <img src="/pwa-192x192.png" alt="Comic Flix Logo" className="w-10 h-10 rounded-xl shadow-lg" />
           <h1 className="text-2xl md:text-3xl font-bold text-[#e50914] tracking-wider">COMIC FLIX</h1>
         </div>
         
-        <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
+        <div className="flex flex-col md:flex-row items-center gap-4 w-full lg:w-auto">
           {deferredPrompt && (
             <button 
               onClick={handleInstallClick}
@@ -118,19 +128,32 @@ export const Home: React.FC = () => {
             </button>
           )}
 
-          <div className="relative w-full md:w-auto">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-            <input
-              type="text"
-              placeholder="Pesquisar..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="bg-[#141414] border border-gray-700 text-white rounded-full py-2 pl-10 pr-4 focus:outline-none focus:border-gray-500 transition w-full md:w-64"
-            />
+          <div className="flex flex-col sm:flex-row w-full md:w-auto gap-2">
+            <div className="relative flex-1 md:w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+              <input
+                type="text"
+                placeholder="Pesquisar..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="bg-[#141414] border border-gray-700 text-white rounded-lg py-2 pl-10 pr-4 focus:outline-none focus:border-gray-500 transition w-full"
+              />
+            </div>
+            
+            <select
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value as any)}
+              className="bg-[#141414] border border-gray-700 text-white rounded-lg py-2 px-3 focus:outline-none focus:border-gray-500 w-full sm:w-auto"
+            >
+              <option value="recent">Mais Recentes</option>
+              <option value="az">A - Z</option>
+              <option value="za">Z - A</option>
+            </select>
           </div>
-          <label className={`cursor-pointer ${isImporting ? 'opacity-50' : 'bg-white/10 hover:bg-white/20'} transition px-4 py-2 rounded flex items-center justify-center gap-2 w-full md:w-auto`}>
+          
+          <label className={`cursor-pointer ${isImporting ? 'opacity-50' : 'bg-[#e50914] hover:bg-red-700'} text-white transition px-6 py-2 rounded font-bold flex items-center justify-center gap-2 w-full md:w-auto`}>
             <Plus size={20} />
-            <span className="font-medium text-sm md:text-base">IMPORTAR</span>
+            <span className="text-sm md:text-base">IMPORTAR</span>
             <input
               type="file"
               accept=".cbz,.zip,.cbr,.rar"
@@ -143,7 +166,6 @@ export const Home: React.FC = () => {
         </div>
       </header>
 
-      {/* Main */}
       <main className="px-4 md:px-8 mt-4">
         {errorMsg && (
           <div className="mb-6 p-4 bg-red-900/50 border border-red-500 rounded text-red-200 text-sm">
