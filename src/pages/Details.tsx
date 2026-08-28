@@ -4,7 +4,7 @@ import type { Comic } from '../types';
 import { storage } from '../services/StorageService';
 import { ArrowLeft, Play, Trash2, Info } from 'lucide-react';
 
-const API = 'http://localhost:3001';
+const API = import.meta.env.PROD ? '' : 'http://localhost:3001';
 
 export const Details: React.FC = () => {
   const { id } = useParams<{ id: string }>();

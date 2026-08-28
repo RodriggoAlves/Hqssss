@@ -4,7 +4,7 @@ import type { Comic } from '../types';
 import { storage } from '../services/StorageService';
 import { ArrowLeft, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from 'lucide-react';
 
-const API = 'http://localhost:3001';
+const API = import.meta.env.PROD ? '' : 'http://localhost:3001';
 
 export const Reader: React.FC = () => {
   const { id } = useParams<{ id: string }>();

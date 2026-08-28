@@ -5,7 +5,7 @@ import { ComicCard } from '../components/ComicCard';
 import { Plus, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-const API = 'http://localhost:3001';
+const API = import.meta.env.PROD ? '' : 'http://localhost:3001';
 
 export const Home: React.FC = () => {
   const [comics, setComics] = useState<Comic[]>([]);

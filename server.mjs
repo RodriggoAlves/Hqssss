@@ -130,7 +130,7 @@ app.post('/api/import', upload.single('file'), async (req, res) => {
 app.get('/api/comics', (req, res) => {
   res.json(library.map(c => ({
     ...c,
-    coverImage: `http://localhost:3001/api/comic/${c.id}/page/0`,
+    coverImage: `/api/comic/${c.id}/page/0`,
   })));
 });
 
@@ -173,5 +173,14 @@ app.delete('/api/comic/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-const PORT = 3001;
-app.listen(PORT, () => console.log(`Comic server on http://localhost:${PORT}`));
+// ---- SERVE FRONTEND (dist) ----
+const distPath = path.join(process.cwd(), 'dist');
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
+
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => console.log(`Comic server on port ${PORT}`));
