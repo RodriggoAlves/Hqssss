@@ -1,0 +1,44 @@
+{
+  "name": "comic-reader",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@bitplane/rars": "^0.9.3",
+    "@tailwindcss/postcss": "^4.3.3",
+    "adm-zip": "^0.6.0",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "framer-motion": "^13.1.1",
+    "jszip": "^3.10.1",
+    "libarchive.js": "^2.0.2",
+    "localforage": "^1.10.0",
+    "lucide-react": "^1.34.0",
+    "multer": "^2.2.0",
+    "node-unrar-js": "^2.0.2",
+    "pdfjs-dist": "^6.2.108",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-router-dom": "^7.18.2",
+    "unrar-js": "^0.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.1.0",
+    "autoprefixer": "^10.5.4",
+    "oxlint": "^1.79.0",
+    "postcss": "^8.5.26",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~6.0.2",
+    "vite": "^8.2.2",
+    "vite-plugin-pwa": "^1.3.0"
+  }
+}
