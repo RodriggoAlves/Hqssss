@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { storage } from '../services/StorageService';
 import { ComicParser } from '../services/ComicParser';
-import { ArrowLeft, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Layout, BookOpen, Smartphone } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Layout, BookOpen, AlignJustify } from 'lucide-react';
 
 export const Reader: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -12,30 +12,26 @@ export const Reader: React.FC = () => {
   const [totalPages, setTotalPages] = useState(0);
   const [zoom, setZoom] = useState(100);
   const [showUI, setShowUI] = useState(true);
-  
   const [displayMode, setDisplayMode] = useState<'single' | 'double' | 'webtoon'>('single');
   const [pageUrls, setPageUrls] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  
-  const parserRef = useRef<ComicParser | null>(null);
+  const [imgLoading, setImgLoading] = useState(true);
 
-  // Load comic file on mount
+  const parserRef = useRef<ComicParser | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const uiTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  // Load comic
   useEffect(() => {
     if (!id) return;
     (async () => {
       try {
         const local = await storage.getComic(id);
         const file = await storage.getComicFile(id);
-        
-        if (!local || !file) {
-          navigate('/');
-          return;
-        }
-
+        if (!local || !file) { navigate('/'); return; }
         const parser = new ComicParser(file, local.fileName);
         await parser.load();
         parserRef.current = parser;
-        
         setTotalPages(parser.getTotalPages());
         setPage(local.currentPage ?? 0);
         setLoading(false);
@@ -46,185 +42,206 @@ export const Reader: React.FC = () => {
     })();
   }, [id, navigate]);
 
-  // Load page images based on display mode
+  // Load page images
   useEffect(() => {
     if (!parserRef.current || loading || totalPages === 0) return;
-    let isMounted = true;
-    
+    let mounted = true;
+    setImgLoading(true);
+
     (async () => {
       try {
-        let urlsToLoad: string[] = [];
-        
-        if (displayMode === 'single') {
-          urlsToLoad = [await parserRef.current!.getPageUrl(page)];
-        } else if (displayMode === 'double') {
-          urlsToLoad.push(await parserRef.current!.getPageUrl(page));
-          if (page + 1 < totalPages) {
-            urlsToLoad.push(await parserRef.current!.getPageUrl(page + 1));
-          }
+        const urls: string[] = [];
+        if (displayMode === 'double') {
+          urls.push(await parserRef.current!.getPageUrl(page));
+          if (page + 1 < totalPages) urls.push(await parserRef.current!.getPageUrl(page + 1));
         } else if (displayMode === 'webtoon') {
-          // Load 3 pages vertically for performance (prev, current, next)
-          const p = page;
-          if (p - 1 >= 0) urlsToLoad.push(await parserRef.current!.getPageUrl(p - 1));
-          urlsToLoad.push(await parserRef.current!.getPageUrl(p));
-          if (p + 1 < totalPages) urlsToLoad.push(await parserRef.current!.getPageUrl(p + 1));
+          // Load a window of pages for vertical reading
+          const start = Math.max(0, page - 1);
+          const end = Math.min(totalPages - 1, page + 2);
+          for (let i = start; i <= end; i++) {
+            urls.push(await parserRef.current!.getPageUrl(i));
+          }
+        } else {
+          urls.push(await parserRef.current!.getPageUrl(page));
         }
-
-        if (isMounted) setPageUrls(urlsToLoad);
-      } catch (e) {
-        console.error('Error loading page:', e);
-      }
+        if (mounted) {
+          setPageUrls(urls);
+          setImgLoading(false);
+        }
+      } catch (e) { console.error(e); }
     })();
-    
-    return () => { isMounted = false; };
+
+    return () => { mounted = false; };
   }, [page, displayMode, loading, totalPages]);
 
   const go = useCallback((p: number) => {
-    const clamped = Math.max(0, Math.min(p, totalPages - 1));
-    setPage(clamped);
-    if (id && totalPages > 0) storage.saveProgress(id, clamped, totalPages);
+    const c = Math.max(0, Math.min(p, totalPages - 1));
+    setPage(c);
+    if (id && totalPages > 0) storage.saveProgress(id, c, totalPages);
+    // Reset scroll on page change
+    if (containerRef.current) containerRef.current.scrollTop = 0;
   }, [id, totalPages]);
 
-  const next = useCallback(() => {
-    const step = displayMode === 'double' ? 2 : 1;
-    go(page + step);
-  }, [go, page, displayMode]);
-  
-  const prev = useCallback(() => {
-    const step = displayMode === 'double' ? 2 : 1;
-    go(page - step);
-  }, [go, page, displayMode]);
+  const step = displayMode === 'double' ? 2 : 1;
+  const next = useCallback(() => go(page + step), [go, page, step]);
+  const prev = useCallback(() => go(page - step), [go, page, step]);
 
-    const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const outerContainerRef = useRef<HTMLDivElement>(null);
-
-  // Keyboard navigation
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      // Bloqueia rolagem APENAS para os atalhos de navegação
-      if (['ArrowRight', 'ArrowLeft', ' '].includes(e.key) && e.target === document.body) {
-        e.preventDefault(); 
-      }
-      
-      if (e.key === 'ArrowRight' || e.key === ' ') next();
-      else if (e.key === 'ArrowLeft') prev();
-      else if (e.key === 'Escape') navigate('/');
-      
-      // Para ArrowUp e ArrowDown, tentamos rolar TUDO que for possível para garantir
-      else if (e.key === 'ArrowUp') {
-        window.scrollBy({ top: -150, behavior: 'smooth' });
-        outerContainerRef.current?.scrollBy({ top: -150, behavior: 'smooth' });
-        scrollContainerRef.current?.scrollBy({ top: -150, behavior: 'smooth' });
-      }
-      else if (e.key === 'ArrowDown') {
-        window.scrollBy({ top: 150, behavior: 'smooth' });
-        outerContainerRef.current?.scrollBy({ top: 150, behavior: 'smooth' });
-        scrollContainerRef.current?.scrollBy({ top: 150, behavior: 'smooth' });
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [next, prev, navigate, displayMode]);
-
-  // Auto-hide UI
-  useEffect(() => {
-    let t: ReturnType<typeof setTimeout>;
-    const m = () => { setShowUI(true); clearTimeout(t); t = setTimeout(() => setShowUI(false), 3000); };
-    window.addEventListener('mousemove', m);
-    window.addEventListener('touchstart', m);
-    return () => { 
-      window.removeEventListener('mousemove', m); 
-      window.removeEventListener('touchstart', m); 
-      clearTimeout(t); 
-    };
+  // UI auto-hide
+  const showUITemporarily = useCallback(() => {
+    setShowUI(true);
+    clearTimeout(uiTimerRef.current);
+    uiTimerRef.current = setTimeout(() => setShowUI(false), 3000);
   }, []);
 
-  if (loading || !id || totalPages === 0) {
-    return <div className="h-screen bg-black text-white flex items-center justify-center text-lg md:text-xl">Carregando HQ local...</div>;
+  useEffect(() => {
+    window.addEventListener('mousemove', showUITemporarily);
+    window.addEventListener('touchstart', showUITemporarily, { passive: true });
+    return () => {
+      window.removeEventListener('mousemove', showUITemporarily);
+      window.removeEventListener('touchstart', showUITemporarily);
+      clearTimeout(uiTimerRef.current);
+    };
+  }, [showUITemporarily]);
+
+  // Keyboard
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); next(); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); }
+      else if (e.key === 'Escape') navigate('/');
+      else if (e.key === 'ArrowDown') containerRef.current?.scrollBy({ top: 150, behavior: 'smooth' });
+      else if (e.key === 'ArrowUp') containerRef.current?.scrollBy({ top: -150, behavior: 'smooth' });
+      else if (e.key === '+' || e.key === '=') setZoom(z => Math.min(300, z + 25));
+      else if (e.key === '-') setZoom(z => Math.max(50, z - 25));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [next, prev, navigate]);
+
+  if (loading || !id) {
+    return <div className="h-screen bg-black text-gray-400 flex items-center justify-center">Carregando...</div>;
   }
 
-  return (
-    <div ref={outerContainerRef} className={`h-screen bg-black flex flex-col select-none ${zoom > 100 || displayMode === 'webtoon' ? 'overflow-auto' : 'overflow-hidden'}`}>
-      {/* Top bar */}
-      <div className={`fixed top-0 left-0 right-0 z-50 p-2 md:p-3 flex justify-between items-center bg-black/80 transition-opacity duration-300 ${showUI ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-        <button onClick={() => navigate(-1)} className="text-white flex items-center gap-1 md:gap-2 hover:text-red-500 py-2 px-2 md:px-4 rounded">
-          <ArrowLeft size={24} /> <span className="hidden md:inline font-semibold">Voltar</span>
-        </button>
-        
-        <div className="flex items-center gap-2 bg-[#2f2f2f] p-1 rounded-lg">
-          <button onClick={() => setDisplayMode('single')} className={`p-2 rounded ${displayMode === 'single' ? 'bg-[#e50914] text-white' : 'text-gray-400 hover:text-white'}`} title="1 Página">
-            <Layout size={18} />
-          </button>
-          <button onClick={() => setDisplayMode('double')} className={`p-2 rounded ${displayMode === 'double' ? 'bg-[#e50914] text-white' : 'text-gray-400 hover:text-white'}`} title="2 Páginas">
-            <BookOpen size={18} />
-          </button>
-          <button onClick={() => setDisplayMode('webtoon')} className={`p-2 rounded ${displayMode === 'webtoon' ? 'bg-[#e50914] text-white' : 'text-gray-400 hover:text-white'}`} title="Webtoon">
-            <Smartphone size={18} />
-          </button>
-        </div>
+  if (totalPages === 0) {
+    return <div className="h-screen bg-black text-gray-400 flex items-center justify-center">Nenhuma página encontrada.</div>;
+  }
 
-        <div className="flex items-center gap-1 md:gap-2 pr-2">
-          <button onClick={() => setZoom(z => Math.max(50, z - 25))} className="text-white p-2 hover:bg-white/10 rounded-full"><ZoomOut size={20} /></button>
-          <span className="text-white text-xs md:text-sm w-8 md:w-12 text-center">{zoom}%</span>
-          <button onClick={() => setZoom(z => Math.min(300, z + 25))} className="text-white p-2 hover:bg-white/10 rounded-full"><ZoomIn size={20} /></button>
+  const isZoomed = zoom !== 100;
+
+  return (
+    <div className="h-screen bg-black flex flex-col select-none overflow-hidden relative">
+
+      {/* ── TOP BAR ── */}
+      <div className={`absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-3 py-2 bg-gradient-to-b from-black/90 to-transparent transition-opacity duration-300 ${showUI ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+        <button
+          onClick={() => navigate(-1)}
+          className="flex items-center gap-1.5 text-white bg-black/40 hover:bg-black/70 backdrop-blur px-3 py-1.5 rounded-full text-sm font-medium transition"
+        >
+          <ArrowLeft size={16} /> Voltar
+        </button>
+
+        {/* Page counter */}
+        <span className="text-white text-xs font-semibold bg-black/50 backdrop-blur px-3 py-1.5 rounded-full">
+          {page + 1} / {totalPages}
+        </span>
+
+        {/* Right controls */}
+        <div className="flex items-center gap-1.5">
+          {/* Display mode */}
+          <div className="flex items-center bg-black/50 backdrop-blur rounded-full p-0.5 gap-0.5">
+            {([['single', Layout], ['double', BookOpen], ['webtoon', AlignJustify]] as const).map(([mode, Icon]) => (
+              <button
+                key={mode}
+                onClick={() => setDisplayMode(mode)}
+                className={`p-2 rounded-full transition ${displayMode === mode ? 'bg-[#e50914] text-white' : 'text-gray-400 hover:text-white'}`}
+              >
+                <Icon size={15} />
+              </button>
+            ))}
+          </div>
+
+          {/* Zoom */}
+          <div className="flex items-center bg-black/50 backdrop-blur rounded-full p-0.5 gap-0.5">
+            <button onClick={() => setZoom(z => Math.max(50, z - 25))} className="p-2 text-gray-300 hover:text-white rounded-full transition"><ZoomOut size={15} /></button>
+            <span className="text-white text-xs font-semibold w-9 text-center">{zoom}%</span>
+            <button onClick={() => setZoom(z => Math.min(300, z + 25))} className="p-2 text-gray-300 hover:text-white rounded-full transition"><ZoomIn size={15} /></button>
+          </div>
         </div>
       </div>
 
-      {/* Image area */}
-      <div 
-        ref={scrollContainerRef}
-        className={`flex-1 ${displayMode === 'webtoon' ? 'w-full pt-16 pb-20' : `flex justify-center ${zoom > 100 ? 'items-start' : 'items-center'}`}`}
-        style={{
-          overflow: zoom > 100 ? 'auto' : 'hidden' // Allow scrolling when zoomed in
-        }}
+      {/* ── IMAGE AREA ── */}
+      <div
+        ref={containerRef}
+        className="flex-1 flex items-center justify-center"
+        style={{ overflow: isZoomed || displayMode === 'webtoon' ? 'auto' : 'hidden' }}
       >
-        <div 
-          className={`flex ${displayMode === 'webtoon' ? 'flex-col items-center gap-4 w-full' : 'gap-2'}`}
+        {/* Loading spinner */}
+        {imgLoading && (
+          <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+            <div className="w-8 h-8 border-2 border-[#e50914] border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+
+        <div
+          className={`flex ${displayMode === 'webtoon' ? 'flex-col items-center w-full gap-1' : 'items-center justify-center'}`}
+          style={{
+            transform: `scale(${zoom / 100})`,
+            transformOrigin: isZoomed ? 'top center' : 'center center',
+            transition: 'transform 0.2s ease',
+            minHeight: displayMode !== 'webtoon' ? '100%' : undefined,
+          }}
         >
           {pageUrls.map((url, i) => (
             <img
-              key={url + i}
+              key={url}
               src={url}
-              alt={`Página ${page + i}`}
+              alt={`Página ${page + i + 1}`}
               draggable={false}
-              style={{
-                width: displayMode === 'webtoon' ? `${Math.min(100, zoom)}%` : 'auto',
-                height: displayMode !== 'webtoon' ? `${zoom}vh` : 'auto',
-                objectFit: 'contain'
-              }}
-              className="max-w-none max-h-none"
+              onLoad={() => setImgLoading(false)}
+              className={
+                displayMode === 'webtoon'
+                  ? 'w-full max-w-2xl object-contain'
+                  : 'max-h-screen max-w-full object-contain'
+              }
+              style={
+                displayMode !== 'webtoon'
+                  ? { height: '100dvh', objectFit: 'contain' }
+                  : {}
+              }
             />
           ))}
         </div>
       </div>
 
-      {/* Click zones */}
+      {/* ── CLICK ZONES (single/double) ── */}
       {displayMode !== 'webtoon' && (
-        <div className="fixed inset-0 z-40 flex pointer-events-none">
-          <div className="w-1/3 cursor-w-resize pointer-events-auto" onClick={prev} />
-          <div className="w-1/3 pointer-events-auto" onClick={() => setShowUI(s => !s)} />
-          <div className="w-1/3 cursor-e-resize pointer-events-auto" onClick={next} />
+        <div className={`absolute inset-0 z-40 flex ${showUI ? 'pointer-events-none' : ''}`}
+             style={{ pointerEvents: 'auto' }}>
+          <div className="w-1/3 h-full cursor-pointer" onClick={prev} />
+          <div className="w-1/3 h-full" onClick={() => { setShowUI(s => !s); clearTimeout(uiTimerRef.current); }} />
+          <div className="w-1/3 h-full cursor-pointer" onClick={next} />
         </div>
       )}
 
-      {/* Bottom navigation */}
-      <div className={`fixed bottom-0 left-0 right-0 z-50 p-2 md:p-4 bg-black/80 transition-opacity duration-300 ${showUI ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-        <div className="max-w-3xl mx-auto flex items-center gap-2 md:gap-6 px-2">
-          <button onClick={prev} className="text-white hover:text-red-500 p-2 md:p-3 rounded-full hover:bg-white/10"><ChevronLeft size={32} /></button>
-          
-          <div className="flex-1 flex flex-col items-center">
-             <span className="text-white text-xs md:text-sm font-medium mb-2">{page + 1} / {totalPages}</span>
-             <input
-              type="range"
-              min={0}
-              max={totalPages - 1}
-              value={page}
-              onChange={e => go(parseInt(e.target.value))}
-              className="w-full accent-red-600 h-2 cursor-pointer rounded-lg"
-             />
-          </div>
+      {/* ── BOTTOM BAR ── */}
+      <div className={`absolute bottom-0 left-0 right-0 z-50 px-3 py-3 bg-gradient-to-t from-black/90 to-transparent transition-opacity duration-300 ${showUI ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+        <div className="flex items-center gap-3 max-w-2xl mx-auto">
+          <button onClick={prev} className="text-white p-2 hover:bg-white/10 rounded-full transition flex-shrink-0">
+            <ChevronLeft size={28} />
+          </button>
 
-          <button onClick={next} className="text-white hover:text-red-500 p-2 md:p-3 rounded-full hover:bg-white/10"><ChevronRight size={32} /></button>
+          <input
+            type="range"
+            min={0}
+            max={totalPages - 1}
+            value={page}
+            onChange={e => go(parseInt(e.target.value))}
+            className="flex-1 accent-[#e50914] h-1.5 cursor-pointer rounded-full"
+          />
+
+          <button onClick={next} className="text-white p-2 hover:bg-white/10 rounded-full transition flex-shrink-0">
+            <ChevronRight size={28} />
+          </button>
         </div>
       </div>
     </div>
