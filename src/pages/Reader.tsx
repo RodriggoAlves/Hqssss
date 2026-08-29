@@ -15,11 +15,14 @@ export const Reader: React.FC = () => {
   const [displayMode, setDisplayMode] = useState<'single' | 'double' | 'webtoon'>('single');
   const [pageUrls, setPageUrls] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [imgLoading, setImgLoading] = useState(true);
+  const [imgLoading, setImgLoading] = useState(false);
 
   const parserRef = useRef<ComicParser | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const uiTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  // Touch state for swipe
+  const touchStart = useRef({ x: 0, y: 0, time: 0 });
 
   // Load comic
   useEffect(() => {
@@ -55,19 +58,13 @@ export const Reader: React.FC = () => {
           urls.push(await parserRef.current!.getPageUrl(page));
           if (page + 1 < totalPages) urls.push(await parserRef.current!.getPageUrl(page + 1));
         } else if (displayMode === 'webtoon') {
-          // Load a window of pages for vertical reading
           const start = Math.max(0, page - 1);
           const end = Math.min(totalPages - 1, page + 2);
-          for (let i = start; i <= end; i++) {
-            urls.push(await parserRef.current!.getPageUrl(i));
-          }
+          for (let i = start; i <= end; i++) urls.push(await parserRef.current!.getPageUrl(i));
         } else {
           urls.push(await parserRef.current!.getPageUrl(page));
         }
-        if (mounted) {
-          setPageUrls(urls);
-          setImgLoading(false);
-        }
+        if (mounted) { setPageUrls(urls); setImgLoading(false); }
       } catch (e) { console.error(e); }
     })();
 
@@ -78,8 +75,11 @@ export const Reader: React.FC = () => {
     const c = Math.max(0, Math.min(p, totalPages - 1));
     setPage(c);
     if (id && totalPages > 0) storage.saveProgress(id, c, totalPages);
-    // Reset scroll on page change
-    if (containerRef.current) containerRef.current.scrollTop = 0;
+    // Reset scroll position on page change
+    if (containerRef.current) {
+      containerRef.current.scrollTop = 0;
+      containerRef.current.scrollLeft = 0;
+    }
   }, [id, totalPages]);
 
   const step = displayMode === 'double' ? 2 : 1;
@@ -95,10 +95,8 @@ export const Reader: React.FC = () => {
 
   useEffect(() => {
     window.addEventListener('mousemove', showUITemporarily);
-    window.addEventListener('touchstart', showUITemporarily, { passive: true });
     return () => {
       window.removeEventListener('mousemove', showUITemporarily);
-      window.removeEventListener('touchstart', showUITemporarily);
       clearTimeout(uiTimerRef.current);
     };
   }, [showUITemporarily]);
@@ -118,6 +116,39 @@ export const Reader: React.FC = () => {
     return () => window.removeEventListener('keydown', onKey);
   }, [next, prev, navigate]);
 
+  // ── TOUCH SWIPE HANDLING ──
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStart.current = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY,
+      time: Date.now()
+    };
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const dx = e.changedTouches[0].clientX - touchStart.current.x;
+    const dy = e.changedTouches[0].clientY - touchStart.current.y;
+    const dt = Date.now() - touchStart.current.time;
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+
+    // When zoomed in, let the browser handle native scroll/pan — don't intercept
+    if (zoom > 100) return;
+
+    // Swipe: fast, horizontal, and clearly more horizontal than vertical
+    if (absDx > 40 && absDx > absDy * 1.3 && dt < 400 && displayMode !== 'webtoon') {
+      if (dx < 0) next();   // swipe left → next page
+      else prev();           // swipe right → prev page
+      return;
+    }
+
+    // Tap (barely moved) → toggle UI
+    if (absDx < 12 && absDy < 12) {
+      setShowUI(s => !s);
+      clearTimeout(uiTimerRef.current);
+    }
+  };
+
   if (loading || !id) {
     return <div className="h-screen bg-black text-gray-400 flex items-center justify-center">Carregando...</div>;
   }
@@ -126,45 +157,50 @@ export const Reader: React.FC = () => {
     return <div className="h-screen bg-black text-gray-400 flex items-center justify-center">Nenhuma página encontrada.</div>;
   }
 
-  const isZoomed = zoom !== 100;
+  const isZoomed = zoom > 100;
+
+  // Image size style
+  // In single/double mode: height = zoom% of viewport height, width auto (may overflow → scroll x)
+  // In webtoon mode: width = zoom% of container, height auto (may overflow → scroll y)
+  const imgStyle: React.CSSProperties = displayMode === 'webtoon'
+    ? { width: `${zoom}%`, height: 'auto', maxWidth: 'none', flexShrink: 0 }
+    : { height: `${zoom}dvh`, width: 'auto', maxWidth: 'none', flexShrink: 0 };
 
   return (
-    <div className="h-screen bg-black flex flex-col select-none overflow-hidden relative">
+    <div className="h-screen bg-black flex flex-col select-none overflow-hidden">
 
       {/* ── TOP BAR ── */}
-      <div className={`absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-3 py-2 bg-gradient-to-b from-black/90 to-transparent transition-opacity duration-300 ${showUI ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+      <div className={`absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-3 pt-2 pb-4 bg-gradient-to-b from-black/95 to-transparent transition-opacity duration-300 ${showUI ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
         <button
           onClick={() => navigate(-1)}
-          className="flex items-center gap-1.5 text-white bg-black/40 hover:bg-black/70 backdrop-blur px-3 py-1.5 rounded-full text-sm font-medium transition"
+          className="flex items-center gap-1.5 text-white bg-black/50 hover:bg-black/80 backdrop-blur px-3 py-1.5 rounded-full text-sm font-medium transition"
         >
           <ArrowLeft size={16} /> Voltar
         </button>
 
-        {/* Page counter */}
-        <span className="text-white text-xs font-semibold bg-black/50 backdrop-blur px-3 py-1.5 rounded-full">
+        <span className="text-white text-xs font-semibold bg-black/60 backdrop-blur px-3 py-1.5 rounded-full">
           {page + 1} / {totalPages}
         </span>
 
-        {/* Right controls */}
         <div className="flex items-center gap-1.5">
           {/* Display mode */}
-          <div className="flex items-center bg-black/50 backdrop-blur rounded-full p-0.5 gap-0.5">
+          <div className="flex items-center bg-black/60 backdrop-blur rounded-full p-0.5 gap-0.5">
             {([['single', Layout], ['double', BookOpen], ['webtoon', AlignJustify]] as const).map(([mode, Icon]) => (
               <button
                 key={mode}
-                onClick={() => setDisplayMode(mode)}
-                className={`p-2 rounded-full transition ${displayMode === mode ? 'bg-[#e50914] text-white' : 'text-gray-400 hover:text-white'}`}
+                onClick={() => { setDisplayMode(mode); setZoom(100); }}
+                className={`p-2 rounded-full transition-colors ${displayMode === mode ? 'bg-[#e50914] text-white' : 'text-gray-400 hover:text-white'}`}
               >
-                <Icon size={15} />
+                <Icon size={14} />
               </button>
             ))}
           </div>
 
           {/* Zoom */}
-          <div className="flex items-center bg-black/50 backdrop-blur rounded-full p-0.5 gap-0.5">
-            <button onClick={() => setZoom(z => Math.max(50, z - 25))} className="p-2 text-gray-300 hover:text-white rounded-full transition"><ZoomOut size={15} /></button>
-            <span className="text-white text-xs font-semibold w-9 text-center">{zoom}%</span>
-            <button onClick={() => setZoom(z => Math.min(300, z + 25))} className="p-2 text-gray-300 hover:text-white rounded-full transition"><ZoomIn size={15} /></button>
+          <div className="flex items-center bg-black/60 backdrop-blur rounded-full p-0.5 gap-0.5">
+            <button onClick={() => setZoom(z => Math.max(50, z - 25))} className="p-2 text-gray-300 hover:text-white rounded-full transition"><ZoomOut size={14} /></button>
+            <span className="text-white text-xs font-bold w-9 text-center">{zoom}%</span>
+            <button onClick={() => setZoom(z => Math.min(300, z + 25))} className="p-2 text-gray-300 hover:text-white rounded-full transition"><ZoomIn size={14} /></button>
           </div>
         </div>
       </div>
@@ -172,25 +208,28 @@ export const Reader: React.FC = () => {
       {/* ── IMAGE AREA ── */}
       <div
         ref={containerRef}
-        className="flex-1 flex items-center justify-center"
-        style={{ overflow: isZoomed || displayMode === 'webtoon' ? 'auto' : 'hidden' }}
+        className={`flex-1 ${displayMode === 'webtoon' ? 'flex flex-col items-center' : 'flex items-center justify-center'}`}
+        style={{
+          overflow: isZoomed || displayMode === 'webtoon' ? 'auto' : 'hidden',
+          // When zoomed, enable both axes
+          overflowX: isZoomed ? 'auto' : 'hidden',
+          overflowY: isZoomed || displayMode === 'webtoon' ? 'auto' : 'hidden',
+          cursor: isZoomed ? 'grab' : 'default',
+          WebkitOverflowScrolling: 'touch' as any,
+          touchAction: isZoomed || displayMode === 'webtoon' ? 'pan-x pan-y' : 'none',
+        }}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
       >
         {/* Loading spinner */}
         {imgLoading && (
-          <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
-            <div className="w-8 h-8 border-2 border-[#e50914] border-t-transparent rounded-full animate-spin" />
+          <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+            <div className="w-7 h-7 border-2 border-[#e50914] border-t-transparent rounded-full animate-spin" />
           </div>
         )}
 
-        <div
-          className={`flex ${displayMode === 'webtoon' ? 'flex-col items-center w-full gap-1' : 'items-center justify-center'}`}
-          style={{
-            transform: `scale(${zoom / 100})`,
-            transformOrigin: isZoomed ? 'top center' : 'center center',
-            transition: 'transform 0.2s ease',
-            minHeight: displayMode !== 'webtoon' ? '100%' : undefined,
-          }}
-        >
+        {/* Images */}
+        <div className={`flex ${displayMode === 'webtoon' ? 'flex-col items-center w-full' : 'flex-row items-center gap-0.5'} ${isZoomed ? '' : 'h-full'}`}>
           {pageUrls.map((url, i) => (
             <img
               key={url}
@@ -198,25 +237,15 @@ export const Reader: React.FC = () => {
               alt={`Página ${page + i + 1}`}
               draggable={false}
               onLoad={() => setImgLoading(false)}
-              className={
-                displayMode === 'webtoon'
-                  ? 'w-full max-w-2xl object-contain'
-                  : 'max-h-screen max-w-full object-contain'
-              }
-              style={
-                displayMode !== 'webtoon'
-                  ? { height: '100dvh', objectFit: 'contain' }
-                  : {}
-              }
+              style={imgStyle}
             />
           ))}
         </div>
       </div>
 
-      {/* ── CLICK ZONES (single/double) ── */}
-      {displayMode !== 'webtoon' && (
-        <div className={`absolute inset-0 z-40 flex ${showUI ? 'pointer-events-none' : ''}`}
-             style={{ pointerEvents: 'auto' }}>
+      {/* ── DESKTOP CLICK ZONES (no mobile) ── */}
+      {displayMode !== 'webtoon' && !isZoomed && (
+        <div className="absolute inset-0 z-40 hidden md:flex">
           <div className="w-1/3 h-full cursor-pointer" onClick={prev} />
           <div className="w-1/3 h-full" onClick={() => { setShowUI(s => !s); clearTimeout(uiTimerRef.current); }} />
           <div className="w-1/3 h-full cursor-pointer" onClick={next} />
@@ -224,10 +253,10 @@ export const Reader: React.FC = () => {
       )}
 
       {/* ── BOTTOM BAR ── */}
-      <div className={`absolute bottom-0 left-0 right-0 z-50 px-3 py-3 bg-gradient-to-t from-black/90 to-transparent transition-opacity duration-300 ${showUI ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+      <div className={`absolute bottom-0 left-0 right-0 z-50 px-4 pb-safe pt-3 pb-5 bg-gradient-to-t from-black/95 to-transparent transition-opacity duration-300 ${showUI ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
         <div className="flex items-center gap-3 max-w-2xl mx-auto">
           <button onClick={prev} className="text-white p-2 hover:bg-white/10 rounded-full transition flex-shrink-0">
-            <ChevronLeft size={28} />
+            <ChevronLeft size={26} />
           </button>
 
           <input
@@ -240,7 +269,7 @@ export const Reader: React.FC = () => {
           />
 
           <button onClick={next} className="text-white p-2 hover:bg-white/10 rounded-full transition flex-shrink-0">
-            <ChevronRight size={28} />
+            <ChevronRight size={26} />
           </button>
         </div>
       </div>

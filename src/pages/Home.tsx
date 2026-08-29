@@ -222,34 +222,37 @@ export const Home: React.FC = () => {
           />
           <div className="absolute inset-0 bg-gradient-to-t from-[#0f0f0f] via-[#0f0f0f]/30 to-transparent" />
 
-          <div className="relative z-10 h-full flex flex-col md:flex-row items-end md:items-center gap-4 px-6 md:px-12 pb-10">
-            {/* Cover */}
-            <img
-              src={featuredComic.coverImage}
-              alt={featuredComic.title}
-              className="w-28 md:w-40 rounded-xl shadow-2xl flex-shrink-0 hidden md:block ring-1 ring-white/10"
-            />
-            <div className="flex-1">
-              <p className="text-xs text-[#e50914] font-bold uppercase tracking-widest mb-1">
-                {featuredComic.progress && featuredComic.progress > 0 ? '▶ Em leitura' : 'Sua biblioteca'}
-              </p>
-              <h2 className="text-2xl md:text-4xl font-black leading-tight drop-shadow-lg mb-3 line-clamp-2">
-                {featuredComic.title}
-              </h2>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => navigate(`/read/${featuredComic.id}`)}
-                  className="flex items-center gap-2 bg-white text-black px-5 py-2 rounded-full text-sm font-bold hover:bg-gray-200 transition"
-                >
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                  {featuredComic.progress && featuredComic.progress > 0 ? 'Continuar' : 'Ler Agora'}
-                </button>
-                <button
-                  onClick={() => navigate(`/details/${featuredComic.id}`)}
-                  className="flex items-center gap-2 bg-white/15 hover:bg-white/25 backdrop-blur px-5 py-2 rounded-full text-sm font-semibold transition"
-                >
-                  + Detalhes
-                </button>
+          {/* Content */}
+          <div className="relative z-10 h-full flex flex-col justify-end px-5 md:px-12 pb-8">
+            <div className="flex items-end gap-4">
+              {/* Cover */}
+              <img
+                src={featuredComic.coverImage}
+                alt={featuredComic.title}
+                className="w-20 md:w-40 rounded-xl shadow-2xl flex-shrink-0 ring-1 ring-white/10"
+              />
+              <div className="flex-1 min-w-0 pb-1">
+                <p className="text-xs text-[#e50914] font-bold uppercase tracking-widest mb-1">
+                  {featuredComic.progress && featuredComic.progress > 0 ? '▶ Em leitura' : 'Sua biblioteca'}
+                </p>
+                <h2 className="text-xl md:text-4xl font-black leading-tight drop-shadow-lg mb-3 line-clamp-2">
+                  {featuredComic.title}
+                </h2>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => navigate(`/read/${featuredComic.id}`)}
+                    className="flex items-center gap-1.5 bg-white text-black px-4 py-2 rounded-full text-xs md:text-sm font-bold hover:bg-gray-200 transition"
+                  >
+                    <svg className="w-3 h-3 md:w-4 md:h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                    {featuredComic.progress && featuredComic.progress > 0 ? 'Continuar' : 'Ler Agora'}
+                  </button>
+                  <button
+                    onClick={() => navigate(`/details/${featuredComic.id}`)}
+                    className="flex items-center gap-1.5 bg-white/15 hover:bg-white/25 backdrop-blur px-4 py-2 rounded-full text-xs md:text-sm font-semibold transition"
+                  >
+                    + Detalhes
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -277,7 +280,7 @@ export const Home: React.FC = () => {
       )}
 
       {/* ── LIBRARY ── */}
-      <main className={`px-4 md:px-8 pb-20 ${featuredComic && !searchQuery ? 'mt-4' : 'mt-24'}`}>
+      <main className={`px-4 md:px-8 pb-24 md:pb-12 ${featuredComic && !searchQuery ? 'mt-4' : 'mt-20'}`}>
         {comics.length === 0 && !isImporting ? (
           <div className="flex flex-col items-center justify-center h-[50vh] text-center gap-4">
             <Library size={48} className="text-gray-700" />
