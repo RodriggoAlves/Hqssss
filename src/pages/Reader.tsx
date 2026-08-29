@@ -19,7 +19,7 @@ export const Reader: React.FC = () => {
 
   const parserRef = useRef<ComicParser | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const uiTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const uiTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Load comic
   useEffect(() => {
