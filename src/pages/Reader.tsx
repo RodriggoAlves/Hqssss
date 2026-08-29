@@ -86,19 +86,23 @@ export const Reader: React.FC = () => {
   const next = useCallback(() => go(page + step), [go, page, step]);
   const prev = useCallback(() => go(page - step), [go, page, step]);
 
-  // UI auto-hide
   const showUITemporarily = useCallback(() => {
     setShowUI(true);
     clearTimeout(uiTimerRef.current);
     uiTimerRef.current = setTimeout(() => setShowUI(false), 3000);
   }, []);
 
+  // UI auto-hide — only use mousemove on desktop
   useEffect(() => {
-    window.addEventListener('mousemove', showUITemporarily);
-    return () => {
-      window.removeEventListener('mousemove', showUITemporarily);
-      clearTimeout(uiTimerRef.current);
-    };
+    const isDesktop = window.matchMedia('(hover: hover)').matches;
+    if (isDesktop) {
+      window.addEventListener('mousemove', showUITemporarily);
+      return () => {
+        window.removeEventListener('mousemove', showUITemporarily);
+        clearTimeout(uiTimerRef.current);
+      };
+    }
+    return () => { clearTimeout(uiTimerRef.current); };
   }, [showUITemporarily]);
 
   // Keyboard
@@ -159,12 +163,13 @@ export const Reader: React.FC = () => {
 
   const isZoomed = zoom > 100;
 
-  // Image size style
-  // In single/double mode: height = zoom% of viewport height, width auto (may overflow → scroll x)
-  // In webtoon mode: width = zoom% of container, height auto (may overflow → scroll y)
+  // Image sizing — at 100% zoom, image fits fully within screen (contain)
+  // At zoom > 100%, image grows larger and becomes scrollable
   const imgStyle: React.CSSProperties = displayMode === 'webtoon'
     ? { width: `${zoom}%`, height: 'auto', maxWidth: 'none', flexShrink: 0 }
-    : { height: `${zoom}dvh`, width: 'auto', maxWidth: 'none', flexShrink: 0 };
+    : zoom > 100
+      ? { height: `${zoom}dvh`, width: 'auto', maxWidth: 'none', flexShrink: 0 }
+      : { maxHeight: '100dvh', maxWidth: '100%', width: 'auto', height: 'auto', objectFit: 'contain' };
 
   return (
     <div className="h-screen bg-black flex flex-col select-none overflow-hidden">
@@ -212,11 +217,11 @@ export const Reader: React.FC = () => {
         style={{
           overflow: isZoomed || displayMode === 'webtoon' ? 'auto' : 'hidden',
           // When zoomed, enable both axes
-          overflowX: isZoomed ? 'auto' : 'hidden',
+          overflowX: (isZoomed || zoom === 100) ? 'auto' : 'hidden',
           overflowY: isZoomed || displayMode === 'webtoon' ? 'auto' : 'hidden',
           cursor: isZoomed ? 'grab' : 'default',
           WebkitOverflowScrolling: 'touch' as any,
-          touchAction: isZoomed || displayMode === 'webtoon' ? 'pan-x pan-y' : 'none',
+          touchAction: displayMode === 'webtoon' ? 'pan-y' : isZoomed ? 'pan-x pan-y' : 'none',
         }}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
