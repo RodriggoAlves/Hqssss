@@ -73,8 +73,9 @@ export const Reader: React.FC = () => {
     })();
   }, [id, navigate]);
 
-  // ── LOAD PAGES ──
+  // ── LOAD PAGES: single / double ──
   useEffect(() => {
+    if (displayMode === 'webtoon') return;
     if (!parserRef.current || loading || totalPages === 0) return;
     let mounted = true;
     setImgLoading(true);
@@ -84,10 +85,6 @@ export const Reader: React.FC = () => {
         if (displayMode === 'double') {
           urls.push(await parserRef.current!.getPageUrl(page));
           if (page + 1 < totalPages) urls.push(await parserRef.current!.getPageUrl(page + 1));
-        } else if (displayMode === 'webtoon') {
-          for (let i = Math.max(0, page - 1); i <= Math.min(totalPages - 1, page + 3); i++) {
-            urls.push(await parserRef.current!.getPageUrl(i));
-          }
         } else {
           urls.push(await parserRef.current!.getPageUrl(page));
         }
@@ -96,6 +93,64 @@ export const Reader: React.FC = () => {
     })();
     return () => { mounted = false; };
   }, [page, displayMode, loading, totalPages]);
+
+  // ── WEBTOON: state for all pages ──
+  const [webtoonUrls, setWebtoonUrls] = useState<(string | null)[]>([]);
+  const pageElsRef = useRef<(HTMLDivElement | null)[]>([]);
+
+  // Load ALL pages progressively when entering webtoon mode
+  useEffect(() => {
+    if (displayMode !== 'webtoon') return;
+    if (!parserRef.current || loading || totalPages === 0) return;
+    let mounted = true;
+
+    setWebtoonUrls(new Array(totalPages).fill(null));
+
+    (async () => {
+      for (let i = 0; i < totalPages; i++) {
+        if (!mounted) break;
+        try {
+          const url = await parserRef.current!.getPageUrl(i);
+          if (!mounted) break;
+          setWebtoonUrls(prev => {
+            const next = [...prev];
+            next[i] = url;
+            return next;
+          });
+        } catch (e) { console.error('webtoon page', i, e); }
+      }
+    })();
+
+    return () => { mounted = false; };
+  }, [displayMode, loading, totalPages]);
+
+  // IntersectionObserver: update page counter as user scrolls in webtoon
+  useEffect(() => {
+    if (displayMode !== 'webtoon') return;
+    const els = pageElsRef.current.filter(Boolean) as HTMLDivElement[];
+    if (els.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        let best: IntersectionObserverEntry | null = null;
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            if (!best || entry.intersectionRatio > best.intersectionRatio) best = entry;
+          }
+        }
+        if (best) {
+          const idx = parseInt((best.target as HTMLElement).dataset.pageindex ?? '0', 10);
+          setPage(idx);
+          if (id && totalPages > 0) storage.saveProgress(id, idx, totalPages);
+        }
+      },
+      { threshold: [0.1, 0.5], root: containerRef.current }
+    );
+
+    els.forEach(el => observer.observe(el));
+    return () => observer.disconnect();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displayMode, webtoonUrls.length, id, totalPages]);
 
   // ── ZOOM / PAN HELPERS ──
   const resetZoom = useCallback(() => {
@@ -110,7 +165,8 @@ export const Reader: React.FC = () => {
       const tp = totalPagesRef.current;
       const c = Math.max(0, Math.min(p, tp - 1));
       setPage(c);
-      setScale(1); setPan({ x: 0, y: 0 }); // reset zoom on page change
+      // Zoom persists across pages — only pan resets so the new page starts centered
+      setPan({ x: 0, y: 0 });
       if (id && tp > 0) storage.saveProgress(id, c, tp);
     };
     const step = displayMode === 'double' ? 2 : 1;
@@ -364,41 +420,81 @@ export const Reader: React.FC = () => {
           </div>
         )}
 
-        {/* Page(s) wrapper — CSS transform is the ONLY zoom/pan mechanism */}
-        <div
-          className={`w-full h-full flex ${displayMode === 'webtoon' ? 'flex-col items-center' : 'items-center justify-center'}`}
-          style={{
-            transform:       transformStr,
-            transformOrigin: 'center center',
-            // 100ms ease so release feels snappy, not laggy
-            transition:      'transform 0.1s ease-out',
-            willChange:      'transform',
-          }}
-        >
-          {pageUrls.map((url, i) => (
-            <img
-              key={url}
-              src={url}
-              alt={`Página ${page + i + 1}`}
-              draggable={false}
-              onLoad={() => setImgLoading(false)}
-              style={
-                displayMode === 'webtoon'
-                  ? { width: '100%', height: 'auto', display: 'block', userSelect: 'none' }
-                  : {
-                    maxWidth:   '100%',
-                    maxHeight:  '100%',
-                    width:      'auto',
-                    height:     'auto',
-                    objectFit:  'contain',
-                    display:    'block',
-                    userSelect: 'none',
-                    WebkitUserSelect: 'none' as any,
-                  }
-              }
-            />
-          ))}
-        </div>
+        {/* Page(s) wrapper — CSS transform handles zoom/pan in single/double */}
+        {displayMode === 'webtoon' ? (
+          // WEBTOON: native scroll, all pages stacked vertically
+          <div className="w-full flex flex-col items-center">
+            {webtoonUrls.map((url, i) => (
+              <div
+                key={i}
+                ref={el => { pageElsRef.current[i] = el; }}
+                data-pageindex={i}
+                className="w-full"
+              >
+                {url ? (
+                  <img
+                    src={url}
+                    alt={`Página ${i + 1}`}
+                    draggable={false}
+                    style={{ width: '100%', height: 'auto', display: 'block' }}
+                  />
+                ) : (
+                  // Placeholder while page is loading
+                  <div
+                    className="w-full flex items-center justify-center bg-black"
+                    style={{ minHeight: '60vw' }}
+                  >
+                    <div className="w-6 h-6 border-2 border-[#e50914]/40 border-t-[#e50914] rounded-full animate-spin" />
+                  </div>
+                )}
+              </div>
+            ))}
+            {/* End-of-comic marker */}
+            {webtoonUrls.length > 0 && webtoonUrls.every(u => u !== null) && (
+              <div className="w-full flex flex-col items-center gap-3 py-12 text-gray-600">
+                <span className="text-2xl">✓</span>
+                <span className="text-sm font-medium">Fim do quadrinho</span>
+                <button
+                  onClick={() => navigate(-1)}
+                  className="mt-2 bg-[#e50914] text-white px-5 py-2 rounded-full text-sm font-semibold"
+                >
+                  Voltar à biblioteca
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          // SINGLE / DOUBLE: CSS transform zoom+pan
+          <div
+            className="w-full h-full flex items-center justify-center"
+            style={{
+              transform:       transformStr,
+              transformOrigin: 'center center',
+              transition:      'transform 0.1s ease-out',
+              willChange:      'transform',
+            }}
+          >
+            {pageUrls.map((url, i) => (
+              <img
+                key={url}
+                src={url}
+                alt={`Página ${page + i + 1}`}
+                draggable={false}
+                onLoad={() => setImgLoading(false)}
+                style={{
+                  maxWidth:   '100%',
+                  maxHeight:  '100%',
+                  width:      'auto',
+                  height:     'auto',
+                  objectFit:  'contain',
+                  display:    'block',
+                  userSelect: 'none',
+                  WebkitUserSelect: 'none' as any,
+                }}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ── DESKTOP click zones (mouse-only devices) ── */}
