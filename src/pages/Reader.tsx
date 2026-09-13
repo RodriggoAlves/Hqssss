@@ -200,17 +200,30 @@ export const Reader: React.FC = () => {
     return () => { window.removeEventListener('mousemove', show); clearTimeout(uiTimerRef.current); };
   }, []);
 
-  // ── TOUCH GESTURE ENGINE (native, non-passive) ──
+  // ── TOUCH GESTURE ENGINE ──
   useEffect(() => {
     const el = containerRef.current;
     if (!el || loading) return;
 
-    // Per-gesture mutable state (local to this effect, not React state)
+    // ── WEBTOON MODE ──
+    // Native browser handles scroll (overflow-y: auto + touchAction: pan-y pinch-zoom).
+    // We only intercept click to toggle UI.
+    if (displayMode === 'webtoon') {
+      const onTap = () => {
+        setShowUI(v => !v);
+        clearTimeout(uiTimerRef.current);
+      };
+      el.addEventListener('click', onTap);
+      return () => el.removeEventListener('click', onTap);
+    }
+
+    // ── SINGLE / DOUBLE MODE ──
+    // Full custom gesture engine: tap, swipe, pan, pinch — all via JS transforms.
     const g = {
       phase: 'idle' as 'idle' | 'maybe-tap' | 'swipe' | 'pan' | 'pinch',
       startX: 0, startY: 0, startTime: 0,
       lastX: 0, lastY: 0,
-      panStartX: 0, panStartY: 0,
+      wasZoomed: false,
       pinchStartDist: 0, pinchStartScale: 1,
     };
 
@@ -218,32 +231,25 @@ export const Reader: React.FC = () => {
       Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
 
     const onStart = (e: TouchEvent) => {
-      // Webtoon: let browser handle vertical scroll naturally
-      if (displayModeRef.current === 'webtoon') return;
       e.preventDefault();
-
       const t = e.touches;
       if (t.length === 1) {
-        g.phase      = scaleRef.current > 1 ? 'pan' : 'maybe-tap';
-        g.startX     = g.lastX = t[0].clientX;
-        g.startY     = g.lastY = t[0].clientY;
-        g.startTime  = Date.now();
-        g.panStartX  = panRef.current.x;
-        g.panStartY  = panRef.current.y;
+        g.phase     = 'maybe-tap';
+        g.wasZoomed = scaleRef.current > 1;
+        g.startX    = g.lastX = t[0].clientX;
+        g.startY    = g.lastY = t[0].clientY;
+        g.startTime = Date.now();
       } else if (t.length === 2) {
-        g.phase            = 'pinch';
-        g.pinchStartDist   = fingerDist(t);
-        g.pinchStartScale  = scaleRef.current;
+        g.phase           = 'pinch';
+        g.pinchStartDist  = fingerDist(t);
+        g.pinchStartScale = scaleRef.current;
       }
     };
 
     const onMove = (e: TouchEvent) => {
-      if (displayModeRef.current === 'webtoon') return;
       e.preventDefault();
-
       const t = e.touches;
 
-      // ── PINCH ──
       if (g.phase === 'pinch' && t.length === 2) {
         const newScale = Math.min(4, Math.max(1,
           g.pinchStartScale * (fingerDist(t) / g.pinchStartDist)
@@ -254,29 +260,22 @@ export const Reader: React.FC = () => {
       }
 
       if (t.length !== 1) return;
-
       const dx = t[0].clientX - g.startX;
       const dy = t[0].clientY - g.startY;
 
-      // Determine gesture type from motion
-      if (g.phase === 'maybe-tap') {
-        if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
-          g.phase = 'swipe';
-        }
+      if (g.phase === 'maybe-tap' && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+        g.phase = g.wasZoomed ? 'pan' : 'swipe';
       }
 
-      // ── PAN (when zoomed in) ──
       if (g.phase === 'pan') {
         const moveDx = t[0].clientX - g.lastX;
         const moveDy = t[0].clientY - g.lastY;
         g.lastX = t[0].clientX;
         g.lastY = t[0].clientY;
-
         const s = scaleRef.current;
         setPan(prev => {
-          const cEl = el;
-          const maxX = (cEl.clientWidth  * (s - 1)) / 2;
-          const maxY = (cEl.clientHeight * (s - 1)) / 2;
+          const maxX = (el.clientWidth  * (s - 1)) / 2;
+          const maxY = (el.clientHeight * (s - 1)) / 2;
           return {
             x: Math.max(-maxX, Math.min(maxX, prev.x + moveDx)),
             y: Math.max(-maxY, Math.min(maxY, prev.y + moveDy)),
@@ -286,15 +285,12 @@ export const Reader: React.FC = () => {
     };
 
     const onEnd = (e: TouchEvent) => {
-      if (displayModeRef.current === 'webtoon') return;
-
       const phase = g.phase;
       g.phase = 'idle';
 
-      if (phase === 'pinch') return; // no further action after pinch
+      if (phase === 'pinch') return;
 
       if (phase === 'maybe-tap') {
-        // Toggle UI
         setShowUI(v => !v);
         clearTimeout(uiTimerRef.current);
         return;
@@ -304,7 +300,6 @@ export const Reader: React.FC = () => {
         const dx = e.changedTouches[0].clientX - g.startX;
         const dy = e.changedTouches[0].clientY - g.startY;
         const dt = Date.now() - g.startTime;
-        // Horizontal swipe: fast, mostly horizontal
         if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.2 && dt < 500) {
           if (dx < 0) nextFn.current();
           else prevFn.current();
@@ -316,22 +311,12 @@ export const Reader: React.FC = () => {
     el.addEventListener('touchmove',  onMove,  { passive: false });
     el.addEventListener('touchend',   onEnd,   { passive: true });
 
-    // Webtoon: tap to toggle UI via click (native scroll handles everything else)
-    const onWebtoonClick = () => {
-      if (displayModeRef.current === 'webtoon') {
-        setShowUI(v => !v);
-        clearTimeout(uiTimerRef.current);
-      }
-    };
-    el.addEventListener('click', onWebtoonClick);
-
     return () => {
       el.removeEventListener('touchstart', onStart);
       el.removeEventListener('touchmove',  onMove);
       el.removeEventListener('touchend',   onEnd);
-      el.removeEventListener('click', onWebtoonClick);
     };
-  }, [loading]); // attach once after load; all state access is via refs
+  }, [loading, displayMode]); // re-run when mode changes to attach correct listeners
 
   // ── RENDER GUARDS ──
   if (loading || !id) return (
@@ -408,8 +393,8 @@ export const Reader: React.FC = () => {
         className="flex-1 w-full h-full"
         style={{
           overflow:    displayMode === 'webtoon' ? 'auto' : 'hidden',
-          touchAction: displayMode === 'webtoon' ? 'pan-y'  : 'none',
-          // scrollbar-width: none for webtoon (Firefox)
+          // pan-y pinch-zoom: allows native vertical scroll AND native pinch-to-zoom in webtoon
+          touchAction: displayMode === 'webtoon' ? 'pan-y pinch-zoom' : 'none',
           scrollbarWidth: 'none',
         }}
       >
