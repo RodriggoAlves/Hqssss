@@ -19,7 +19,9 @@ const BottomNav: React.FC = () => {
     input.accept = '.cbz,.zip,.cbr,.rar';
     input.multiple = true;
     input.onchange = () => {
-      window.dispatchEvent(new CustomEvent('import-files', { detail: { files: input.files } }));
+      // Convert to plain array immediately — FileList can become empty after event loop
+      const files = Array.from(input.files ?? []);
+      window.dispatchEvent(new CustomEvent('import-files', { detail: { files } }));
       if (location.pathname !== '/') navigate('/');
     };
     input.click();
@@ -32,7 +34,8 @@ const BottomNav: React.FC = () => {
     (input as any).directory = true;
     input.multiple = true;
     input.onchange = () => {
-      window.dispatchEvent(new CustomEvent('import-folder', { detail: { files: input.files } }));
+      const files = Array.from(input.files ?? []);
+      window.dispatchEvent(new CustomEvent('import-folder', { detail: { files } }));
       if (location.pathname !== '/') navigate('/');
     };
     input.click();

@@ -2,9 +2,55 @@ import React, { useState, useEffect } from 'react';
 import type { Comic } from '../types';
 import { storage } from '../services/StorageService';
 import { ComicCard } from '../components/ComicCard';
-import { Plus, Search, Download, FolderPlus, ChevronRight, ChevronDown, Library } from 'lucide-react';
+import { Plus, Search, Download, FolderPlus, ChevronRight, ChevronDown, Library, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { ComicParser } from '../services/ComicParser';
+
+
+const SortDropdown = ({ value, onChange }: { value: string, onChange: (v: string) => void }) => {
+  const [open, setOpen] = React.useState(false);
+  
+  const options = [
+    { id: 'recent', label: 'Recentes' },
+    { id: 'az', label: 'A - Z' },
+    { id: 'za', label: 'Z - A' },
+  ];
+
+  const currentLabel = options.find(o => o.id === value)?.label || 'A - Z';
+
+  const handleBlur = (e: React.FocusEvent) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setOpen(false);
+    }
+  };
+
+  return (
+    <div className="relative hidden sm:block" onBlur={handleBlur} tabIndex={-1}>
+      <button 
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 bg-white/8 border border-white/10 hover:bg-white/15 text-gray-300 rounded-full py-1.5 px-3 text-xs focus:outline-none transition-colors"
+      >
+        {currentLabel}
+        <ChevronDown size={12} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-1.5 w-32 bg-[#1a1a1a] border border-white/10 rounded-xl shadow-2xl overflow-hidden z-50 flex flex-col py-1">
+          {options.map(opt => (
+            <button
+              key={opt.id}
+              onClick={() => { onChange(opt.id); setOpen(false); }}
+              className={`w-full text-left px-4 py-2 text-xs transition-colors ${value === opt.id ? 'bg-[#e50914] text-white font-semibold' : 'text-gray-300 hover:bg-white/10'}`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const Home: React.FC = () => {
   const [comics, setComics] = useState<Comic[]>([]);
@@ -13,13 +59,35 @@ export const Home: React.FC = () => {
   const [importTotal, setImportTotal] = useState(0);
   const [importCurrent, setImportCurrent] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortOrder, setSortOrder] = useState<'recent' | 'az' | 'za'>('recent');
+  const [sortOrder, setSortOrder] = useState<'recent' | 'az' | 'za'>('az');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [expandedRoots, setExpandedRoots] = useState<Record<string, boolean>>({});
   const navigate = useNavigate();
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
+  // Refs so event listeners in useEffect always see the latest function versions
+  const processImportRef = React.useRef<((files: FileList | File[], isFolder?: boolean) => void) | null>(null);
+  const loadComicsRef = React.useRef<(() => void) | null>(null);
+
   useEffect(() => { loadComics(); }, []);
+
+  // Wire up BottomNav custom events — use refs to avoid stale closures
+  useEffect(() => {
+    const onClear = () => loadComicsRef.current?.();
+    const onImportFiles = (e: any) => e.detail?.files && processImportRef.current?.(e.detail.files, false);
+    const onImportFolder = (e: any) => e.detail?.files && processImportRef.current?.(e.detail.files, true);
+
+    window.addEventListener('library-cleared', onClear);
+    window.addEventListener('import-files', onImportFiles);
+    window.addEventListener('import-folder', onImportFolder);
+
+    return () => {
+      window.removeEventListener('library-cleared', onClear);
+      window.removeEventListener('import-files', onImportFiles);
+      window.removeEventListener('import-folder', onImportFolder);
+    };
+  }, []); // runs once — but uses refs which always point to latest functions
+
 
   useEffect(() => {
     const h = (e: Event) => { e.preventDefault(); setDeferredPrompt(e); };
@@ -42,9 +110,10 @@ export const Home: React.FC = () => {
       setErrorMsg(`Erro ao carregar: ${err.message}`);
     }
   };
+  // Keep ref in sync with latest function (avoids stale closure in event listeners)
+  loadComicsRef.current = loadComics;
 
-  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>, isFolder = false) => {
-    const files = e.target.files;
+  const processImport = async (files: FileList | File[], isFolder = false) => {
     if (!files || files.length === 0) return;
 
     const validFiles = Array.from(files).filter(f =>
@@ -114,16 +183,17 @@ export const Home: React.FC = () => {
     setImportProgress('');
     setImportTotal(0);
     setImportCurrent(0);
-    e.target.value = '';
     await loadComics();
+  };
+  // Keep ref in sync with latest function (avoids stale closure in event listeners)
+  processImportRef.current = processImport;
+
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>, isFolder = false) => {
+    if (e.target.files) processImport(e.target.files, isFolder);
+    e.target.value = '';
   };
 
-  const handleClearLibrary = async () => {
-    if (!window.confirm('Apagar TODOS os quadrinhos da biblioteca?')) return;
-    const all = await storage.getAllComics();
-    for (const c of all) await storage.deleteComic(c.id);
-    await loadComics();
-  };
+
 
   const toggleRoot = (root: string) =>
     setExpandedRoots(prev => ({ ...prev, [root]: !prev[root] }));
@@ -157,7 +227,7 @@ export const Home: React.FC = () => {
   const featuredComic = comics.find(c => (c.progress ?? 0) > 0 && (c.progress ?? 0) < 100) || comics[0];
 
   return (
-    <div className="min-h-screen bg-[#0f0f0f] text-white">
+    <div className="min-h-screen bg-[#0f0f0f] text-white w-full max-w-[100vw] overflow-x-hidden">
       {/* ── NAVBAR ── */}
       <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 md:px-8 py-3 bg-black/70 backdrop-blur-md border-b border-white/5">
         {/* Logo */}
@@ -180,15 +250,7 @@ export const Home: React.FC = () => {
 
         {/* Right actions */}
         <div className="flex items-center gap-2 flex-shrink-0">
-          <select
-            value={sortOrder}
-            onChange={(e) => setSortOrder(e.target.value as any)}
-            className="bg-white/8 border border-white/10 text-gray-300 rounded-full py-1.5 px-3 text-xs focus:outline-none hidden sm:block"
-          >
-            <option value="recent">Recentes</option>
-            <option value="az">A - Z</option>
-            <option value="za">Z - A</option>
-          </select>
+          <SortDropdown value={sortOrder} onChange={(val) => setSortOrder(val as any)} />
 
           <label className="cursor-pointer bg-white/10 hover:bg-white/20 transition px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5">
             <Plus size={13} /> Arquivos
@@ -206,13 +268,27 @@ export const Home: React.FC = () => {
               <Download size={13} />
             </button>
           )}
+
+          <button
+            onClick={async () => {
+              if (!window.confirm('Apagar TODOS os quadrinhos da biblioteca?')) return;
+              const all = await storage.getAllComics();
+              for (const c of all) await storage.deleteComic(c.id);
+              await loadComics();
+            }}
+            className="cursor-pointer bg-white/8 hover:bg-red-900/40 border border-white/10 hover:border-red-500/40 text-gray-400 hover:text-red-400 transition px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5"
+            title="Limpar biblioteca"
+          >
+            <Trash2 size={13} />
+            <span className="hidden sm:inline">Limpar</span>
+          </button>
         </div>
       </header>
 
       {/* ── HERO (last read / featured) ── */}
       {featuredComic && !searchQuery && (
         <div
-          className="relative w-full pt-16"
+          className="relative w-full pt-16 overflow-hidden"
           style={{ height: 'min(55vh, 440px)' }}
         >
           {/* Blurred bg */}
@@ -313,28 +389,20 @@ export const Home: React.FC = () => {
                           : <ChevronRight size={18} className="text-gray-400" />
                       )}
                     </h2>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); navigate(`/?filter=${encodeURIComponent(root)}`); }}
-                      className="text-xs text-gray-500 hover:text-white transition"
-                    >
+                    <span className="text-xs text-gray-500">
                       {rootData.totalComics.length} quadrinhos
-                    </button>
+                    </span>
                   </div>
 
                   {!isExpanded || !hasSubs ? (
-                    /* Collapsed: horizontal scroll of all comics */
-                    <div
-                      className="flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory"
-                      style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-                    >
+                    /* Grid de cards — quebra em múltiplas linhas */
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-9 gap-3">
                       {rootData.totalComics.map(comic => (
-                        <div key={comic.id} className="snap-start flex-shrink-0 w-[130px] md:w-[160px]">
-                          <ComicCard comic={comic} onClick={(c) => navigate(`/details/${c.id}`)} />
-                        </div>
+                        <ComicCard key={comic.id} comic={comic} onClick={(c) => navigate(`/details/${c.id}`)} />
                       ))}
                     </div>
                   ) : (
-                    /* Expanded: subfolders */
+                    /* Expanded: subfolders each as a grid */
                     <div className="flex flex-col gap-6 pl-3 border-l border-[#e50914]/20">
                       {Object.keys(rootData.subs).sort().map(sub => (
                         <div key={sub}>
@@ -344,14 +412,9 @@ export const Home: React.FC = () => {
                               {sub}
                             </h3>
                           )}
-                          <div
-                            className="flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory"
-                            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-                          >
+                          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-9 gap-3">
                             {rootData.subs[sub].map(comic => (
-                              <div key={comic.id} className="snap-start flex-shrink-0 w-[130px] md:w-[160px]">
-                                <ComicCard comic={comic} onClick={(c) => navigate(`/details/${c.id}`)} />
-                              </div>
+                              <ComicCard key={comic.id} comic={comic} onClick={(c) => navigate(`/details/${c.id}`)} />
                             ))}
                           </div>
                         </div>
@@ -364,34 +427,7 @@ export const Home: React.FC = () => {
           </div>
         )}
       </main>
-
-      {/* ── MOBILE BOTTOM BAR ── */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around px-4 py-3 bg-black/80 backdrop-blur border-t border-white/5 md:hidden">
-        <button className="flex flex-col items-center gap-1 text-[#e50914]">
-          <Library size={20} />
-          <span className="text-[10px] font-medium">Biblioteca</span>
-        </button>
-
-        <label className="flex flex-col items-center gap-1 text-gray-400 cursor-pointer">
-          <Plus size={20} />
-          <span className="text-[10px] font-medium">Importar</span>
-          <input type="file" accept=".cbz,.zip,.cbr,.rar" multiple className="hidden" onChange={(e) => handleImport(e, false)} disabled={isImporting} />
-        </label>
-
-        <label className="flex flex-col items-center gap-1 text-gray-400 cursor-pointer">
-          <FolderPlus size={20} />
-          <span className="text-[10px] font-medium">Pasta</span>
-          {/* @ts-ignore */}
-          <input type="file" webkitdirectory="" directory="" multiple className="hidden" onChange={(e) => handleImport(e, true)} disabled={isImporting} />
-        </label>
-
-        <button onClick={handleClearLibrary} className="flex flex-col items-center gap-1 text-gray-600">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-          <span className="text-[10px] font-medium">Limpar</span>
-        </button>
-      </div>
-
-      <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; } div::-webkit-scrollbar { display: none; }`}</style>
     </div>
   );
 };
+
